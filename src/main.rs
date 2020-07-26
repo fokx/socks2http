@@ -25,10 +25,6 @@ fn print_type_of<T>(_: &T) {
 #[tokio::main]
 async fn main() {//-> Result<(), Box<dyn std::error::Error>> {
     env_logger::from_env(env_logger::Env::default().default_filter_or("info")).init();
-    // let listen_addr = SocketAddr::from_str(BIND_URL).unwrap();
-    // let mut stream = TcpStream::connect("127.0.0.1:20001").unwrap();
-    // let mut buf_reader = BufReader::new(stream);
-    // buf_reader.read_line(&mut buffer);
     let mut listener = TcpListener::bind(BIND_URL).await.unwrap();
     warn!("Listening on http://{}", BIND_URL);
 
@@ -55,38 +51,53 @@ async fn main() {//-> Result<(), Box<dyn std::error::Error>> {
                 }
             };
             let bytes_from_downstream = &buf[0..downstream_read_bytes_size];
-            // if let Err(e) = socket.write_all(downstream_bytes).await {
-            //     println!("failed to write to socket; err = {:?}", e);
-            //     return;
-            // }
-
 
             let mut headers = [httparse::EMPTY_HEADER; 16];
             let mut req = httparse::Request::new(&mut headers);
             let parse_result = req.parse(bytes_from_downstream);
             if let Err(e) = parse_result {
-                println!("invalid req: ");
+                info!("invalid req: ");
                 // convert buf to utf8 string may fail:
                 let invalid_buf = String::from_utf8(buf[0..downstream_read_bytes_size].to_vec());
                 if let Err(e) = invalid_buf {
-                    println!("request not valid UTF sequence from some point");
-                } else {
-                    println!("{}", invalid_buf.unwrap());
+                    info!("request not valid UTF sequence from some point, {}", e);
                 }
+                // } else {
+                //     info!("{}", invalid_buf.unwrap());
+                // }
                 return;
             } else {
+                // convert buf to utf8 string may fail:
+                let invalid_buf = String::from_utf8(buf[0..downstream_read_bytes_size].to_vec());
+                if let Err(e) = invalid_buf {
+                    info!("request not valid UTF sequence from some point, {}", e);
+                    return;
+                }
+
+
                 if parse_result.unwrap().is_complete() {
                     if let Some(valid_req_path) = req.path {
                         info!("parsing {}", valid_req_path);
                         let (req_host, req_port) = if !valid_req_path.contains("/") {
-                            let mut vec: Vec<&str> = valid_req_path.split(":").collect();//.collect::<&str>();
-                            let port = vec.last().unwrap().parse::<u16>().unwrap();
+                            let mut vec: Vec<&str> = valid_req_path.split(":").collect();
+                            let port = vec.last().unwrap().parse::<u16>();
+                            if let Err(e) = port {
+                                warn!("ignore invalid req port, {}", e);
+                                return;
+                            }
+                            let port = port.unwrap();
                             let slice = &vec[..];
                             let host: String = slice[0..slice.len() - 1].join(":"); // String
                             (host, port)
                         } else {
                             let req_url_parser =
-                                reqwest::Url::parse(valid_req_path).unwrap();
+                                reqwest::Url::parse(valid_req_path);
+                            if let Err(e) = req_url_parser {
+                                warn!("ignore invalid req, {}", e);
+                                return;
+                            }
+                            let req_url_parser = req_url_parser.unwrap();
+
                             let req_host = req_url_parser.host().unwrap().to_string();
                             let req_port = if let Some(port) = req_url_parser.port() {
                                 port
@@ -128,23 +139,35 @@ async fn main() {//-> Result<(), Box<dyn std::error::Error>> {
                             futures::future::try_join(client_to_server, server_to_client)
                                 .await.unwrap();
                         } else {
+                            let socks5_url = reqwest::Url::parse(UPSTREAM_SOCKS5_PROXY_URL_FULL).unwrap();
+                            let client = reqwest::Client::builder()
+                                .proxy(reqwest::Proxy::all(socks5_url).unwrap())
+                                .build()
+                                .unwrap();
+                            info!("connect via SOCKS5 to {}", valid_req_path);
+                            info!("{}", invalid_buf.unwrap());
+                            let response = client.get(valid_req_path).send().await.unwrap();
+                            // let headers = response.headers();
+                            // let body_text =response.text().await.unwrap();
+                            let response_bytes = response.bytes().await.unwrap();
+                            let write_result = inbound.write(&response_bytes).await;
+                            inbound.flush().await.unwrap();
+                            // Ok(hyper::Response::new(hyper::Body::from(body_text)))
+
+
                             // // Method = GET ...
-                            let upstream_write_bytes_size =
-                                outbound.write(bytes_from_downstream).await.unwrap();
-                            assert_eq!(upstream_write_bytes_size, downstream_read_bytes_size);
-
-                            let (mut ri, mut wi) = inbound.split();
-                            let (mut ro, mut wo) = outbound.get_mut().split();
-
-                            io::copy(&mut ro, &mut wi)
-                                .await.expect("Transport endpoint is not connected");
-                            wi.shutdown().await;
-                            wo.shutdown().await;
-
+                            // let upstream_write_bytes_size =
+                            //     outbound.write(bytes_from_downstream).await.unwrap();
+                            // assert_eq!(upstream_write_bytes_size, downstream_read_bytes_size);
+                            //
+                            // let (mut ri, mut wi) = inbound.split();
+                            // let (mut ro, mut wo) = outbound.get_mut().split();
+                            //
+                            // io::copy(&mut ro, &mut wi)
+                            //     .await.expect("Transport endpoint is not connected");
+                            // wi.shutdown().await;
+                            // wo.shutdown().await;
                         }
-
-
-
                     } else {
                         warn!("GOT INVALID REQ PATH: {:?}", req.path)
                     };
