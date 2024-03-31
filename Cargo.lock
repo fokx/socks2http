@@ -1160,7 +1160,7 @@ dependencies = [
 
 [[package]]
 name = "socks2http"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "async-socks5",
  "clap",

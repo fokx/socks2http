@@ -1,21 +1,14 @@
-use std::io::{BufRead, Read, Write};
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, ToSocketAddrs};
-use std::ops::Deref;
-use std::rc::Rc;
-use std::str::FromStr;
-use std::sync::{Arc, Mutex};
-
 use clap::Parser;
 use log::{info, warn};
 use rand::prelude::SliceRandom;
 use reqwest::Method;
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::io;
 use tokio::net::{TcpListener, TcpStream};
 
-fn print_type_of<T>(_: &T) {
-    println!("{}", std::any::type_name::<T>())
-}
+// fn print_type_of<T>(_: &T) {
+//     println!("{}", std::any::type_name::<T>())
+// }
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -27,23 +20,21 @@ struct Cli {
 }
 
 #[tokio::main]
-async fn main() {//-> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     let args = Cli::parse();
-    // let mut upstreams = Arc::new(Mutex::new(args.from.unwrap()));
-    let x = args.from.unwrap();
-    let upstreams: &'static [usize] = x.leak();
+    let upstreams: &'static [usize] = args.from.unwrap().leak();
 
     let bind_port = args.to.expect("invalid `to` port");
     // warn!("convert proxy from socks5 :{:?} to http :{:?}", &upstreams_clone.clone(), bind_port);
 
-    let mut listener = TcpListener::bind(format!("127.0.0.1:{:?}", bind_port)).await.unwrap();
-
-    while let Ok((mut inbound, addr)) = listener.accept().await {
+    let  listener = TcpListener::bind(format!("127.0.0.1:{:?}", bind_port)).await?;
+    loop {
+        let (mut inbound, addr) = listener.accept().await?;
         info!("NEW CLIENT: {}", addr);
         tokio::spawn(async move {
-            let upstream_port = upstreams.choose(&mut rand::thread_rng()).unwrap().clone();
+            let upstream_port = upstreams.choose(&mut rand::thread_rng()).unwrap();
             let mut buf = [0; 1024 * 8];
             let Ok(downstream_read_bytes_size) = inbound.read(&mut buf).await else { return; };
             let bytes_from_downstream = &buf[0..downstream_read_bytes_size];
@@ -57,7 +48,7 @@ async fn main() {//-> Result<(), Box<dyn std::error::Error>> {
                 if let Some(valid_req_path) = req.path {
                     info!("parsing {}", valid_req_path);
                     let (req_host, req_port) = if !valid_req_path.contains("/") {
-                        let mut vec: Vec<&str> = valid_req_path.split(":").collect();
+                        let vec: Vec<&str> = valid_req_path.split(":").collect();
                         let port = vec.last().unwrap().parse::<u16>();
                         if let Err(e) = port {
                             warn!("ignore invalid req port, {}", e);
@@ -123,7 +114,7 @@ async fn main() {//-> Result<(), Box<dyn std::error::Error>> {
                         // let headers = response.headers();
                         // let body_text =response.text().await.unwrap();
                         let response_bytes = response.bytes().await.unwrap();
-                        inbound.write(&response_bytes).await;
+                        let _ = inbound.write(&response_bytes).await;
                         inbound.flush().await.unwrap();
                         // Ok(hyper::Response::new(hyper::Body::from(body_text)))
 
