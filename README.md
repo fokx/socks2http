@@ -7,9 +7,13 @@ This is just what [Privoxy](https://www.privoxy.org/)'s `forward-socks5` does.
 ### Usage
 ```zsh
 cargo build --release
-socks2http <FROM_PORT> <TO_PORT>
-# e.g. forward a socks5 server listening at localhost:9050 as an http proxy at localhost:10050
-socks2http 9050 10050
+socks2http --from <space separated SOCKS5 ports> --to <HTTP proxy listen port>
+# e.g. 
+# forward a socks5 server listening at localhost:9050 as an http proxy at localhost:10050
+socks2http --from 9050 --to 10050
+# forward multiple socks5 servers listening at localhost:2000, :2001, :2002, using random switch policy
+socks2http --from 2000 2001 2002 --to 10050
+
 ```
 
 ### Implementation
