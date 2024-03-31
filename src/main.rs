@@ -3,10 +3,11 @@ use std::io::{Read, BufRead, Write};
 use std::str::FromStr;
 use log::{info, warn};
 use std::ops::Deref;
+use rand::prelude::SliceRandom;
 use tokio::net::{TcpStream, TcpListener};
-use tokio::io::BufReader;
-use tokio::prelude::*;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
 use reqwest::Method;
+use tokio::io;
 /*
 TODO: IPv6 support
  parsing [2606:4700:4700::1111]:443
@@ -24,7 +25,14 @@ fn print_type_of<T>(_: &T) {
 
 #[tokio::main]
 async fn main() {//-> Result<(), Box<dyn std::error::Error>> {
-    env_logger::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    let x = vec![5107, 5130, 5110];
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
+    let mut rng = rand::thread_rng();
+    let choice = x.choose(&mut rng).unwrap();
+
+    warn!("forwarded to socks5 proxy at port {}!", choice);
+
     let mut listener = TcpListener::bind(BIND_URL).await.unwrap();
     warn!("Listening on http://{}", BIND_URL);
 
@@ -56,7 +64,7 @@ async fn main() {//-> Result<(), Box<dyn std::error::Error>> {
             let mut req = httparse::Request::new(&mut headers);
             let parse_result = req.parse(bytes_from_downstream);
             if let Err(e) = parse_result {
-                info!("invalid req: ");
+                info!("invalid req: {e}");
                 // convert buf to utf8 string may fail:
                 let invalid_buf = String::from_utf8(buf[0..downstream_read_bytes_size].to_vec());
                 if let Err(e) = invalid_buf {
@@ -115,8 +123,8 @@ async fn main() {//-> Result<(), Box<dyn std::error::Error>> {
                         let outbound =
                             TcpStream::connect(UPSTREAM_SOCKS5_PROXY_URL).await.unwrap();
                         let mut outbound =
-                            tokio::io::BufStream::new(outbound);
-                        async_socks5::connect(&mut outbound, ((req_host, req_port)), None)
+                            io::BufStream::new(outbound);
+                        async_socks5::connect(&mut outbound, (req_host, req_port), None)
                             .await.unwrap();
 
                         if req.method.unwrap() == Method::CONNECT {
@@ -150,7 +158,7 @@ async fn main() {//-> Result<(), Box<dyn std::error::Error>> {
                             // let headers = response.headers();
                             // let body_text =response.text().await.unwrap();
                             let response_bytes = response.bytes().await.unwrap();
-                            let write_result = inbound.write(&response_bytes).await;
+                            inbound.write(&response_bytes).await;
                             inbound.flush().await.unwrap();
                             // Ok(hyper::Response::new(hyper::Body::from(body_text)))
 

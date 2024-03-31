@@ -1,17 +1,20 @@
 [package]
 name = "pk"
-version = "0.1.0"
-authors = ["ruby <lqy@x87.org>"]
-edition = "2018"
+version = "0.2.0"
+authors = ["fokx <fokx@github>"]
+edition = "2021"
 
 [dependencies]
-hyper = "0.13"
-tokio = { version = "0.2", features = ["full"] }
-reqwest = { version = "0.10.4", features = ["blocking", "socks"] }
-log = "0.4"
-env_logger = "0.7.1"
-httparse = "1.3.4"
-async-socks5 = "0.3.1"
+#openssl = { version = "0.10.49" }
+#openssl2-sys = "1.0.0"
+hyper = "*"
+tokio = { version = "*", features = ["full"] }
+reqwest = { version = "*", features = ["rustls-tls", "blocking", "socks"] }
+log = "*"
+env_logger ="*"
+httparse = "*"
+async-socks5 = "*"
 #tokio-socks = "0.2.0"
 #socks = "0.3.2"
-futures = "0.3.5"
+futures = "*"
+rand = "*"
