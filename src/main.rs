@@ -8,33 +8,36 @@ use tokio::net::{TcpStream, TcpListener};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
 use reqwest::Method;
 use tokio::io;
-/*
-TODO: IPv6 support
- parsing [2606:4700:4700::1111]:443
-x6.x87.org
+use clap::Parser;
 
- */
-static UPSTREAM_HTTP_PROXY_URL: &str = "http://127.0.0.1:8118";
-static UPSTREAM_SOCKS5_PROXY_URL_FULL: &str = "socks5://127.0.0.1:20001";
-static UPSTREAM_SOCKS5_PROXY_URL: &str = "127.0.0.1:20001";
-static BIND_URL: &str = "127.0.0.1:8121";
 
 fn print_type_of<T>(_: &T) {
     println!("{}", std::any::type_name::<T>())
 }
 
+#[derive(Parser)]
+#[command(version, about, long_about = None)]
+struct Cli {
+    /// The pattern to look for
+    from_port: usize,
+    /// The path to the file to read
+    to_port: usize,
+}
+
 #[tokio::main]
 async fn main() {//-> Result<(), Box<dyn std::error::Error>> {
-    let x = vec![5107, 5130, 5110];
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    let mut rng = rand::thread_rng();
-    let choice = x.choose(&mut rng).unwrap();
+    // let x = vec![5107, 5130, 5110];
+    // let mut rng = rand::thread_rng();
+    // let choice = x.choose(&mut rng).unwrap();
+    // warn!("forwarded to socks5 proxy at port {}!", choice);
 
-    warn!("forwarded to socks5 proxy at port {}!", choice);
+    let args = Cli::parse();
 
-    let mut listener = TcpListener::bind(BIND_URL).await.unwrap();
-    warn!("Listening on http://{}", BIND_URL);
+    warn!("convert proxy from socks5 :{:?} to http :{:?}", args.from_port, args.to_port);
+
+    let mut listener = TcpListener::bind(format!("127.0.0.1:{:?}", args.to_port)).await.unwrap();
 
     while let Ok((mut inbound, addr)) = listener.accept().await {
         info!("NEW CLIENT: {}", addr);
@@ -121,7 +124,7 @@ async fn main() {//-> Result<(), Box<dyn std::error::Error>> {
                         //     UPSTREAM_SOCKS5_PROXY_URL, &*pass_outbound).unwrap();
 
                         let outbound =
-                            TcpStream::connect(UPSTREAM_SOCKS5_PROXY_URL).await.unwrap();
+                            TcpStream::connect(format!( "127.0.0.1:{:?}", args.from_port)).await.unwrap();
                         let mut outbound =
                             io::BufStream::new(outbound);
                         async_socks5::connect(&mut outbound, (req_host, req_port), None)
@@ -147,7 +150,7 @@ async fn main() {//-> Result<(), Box<dyn std::error::Error>> {
                             futures::future::try_join(client_to_server, server_to_client)
                                 .await.unwrap();
                         } else {
-                            let socks5_url = reqwest::Url::parse(UPSTREAM_SOCKS5_PROXY_URL_FULL).unwrap();
+                            let socks5_url = reqwest::Url::parse(&*format!("socks5://127.0.0.1:{:?}", args.from_port).to_string()).unwrap();
                             let client = reqwest::Client::builder()
                                 .proxy(reqwest::Proxy::all(socks5_url).unwrap())
                                 .build()

@@ -1,6 +1,7 @@
 [package]
-name = "pk"
-version = "0.2.0"
+name = "socks2http"
+version = "0.3.0"
+description = "Convert SOCKS5 proxy to HTTP proxy"
 authors = ["fokx <fokx@github>"]
 edition = "2021"
 
@@ -18,3 +19,4 @@ async-socks5 = "*"
 #socks = "0.3.2"
 futures = "*"
 rand = "*"
+clap = { version = "4.5.4", features = ["derive"] }
