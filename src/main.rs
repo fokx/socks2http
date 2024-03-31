@@ -1,15 +1,17 @@
-use std::net::{Ipv4Addr, SocketAddrV4, SocketAddr, ToSocketAddrs};
-use std::io::{Read, BufRead, Write};
-use std::str::FromStr;
-use log::{info, warn};
+use std::io::{BufRead, Read, Write};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, ToSocketAddrs};
 use std::ops::Deref;
-use rand::prelude::SliceRandom;
-use tokio::net::{TcpStream, TcpListener};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
-use reqwest::Method;
-use tokio::io;
-use clap::Parser;
+use std::rc::Rc;
+use std::str::FromStr;
+use std::sync::{Arc, Mutex};
 
+use clap::Parser;
+use log::{info, warn};
+use rand::prelude::SliceRandom;
+use reqwest::Method;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io;
+use tokio::net::{TcpListener, TcpStream};
 
 fn print_type_of<T>(_: &T) {
     println!("{}", std::any::type_name::<T>())
@@ -18,28 +20,27 @@ fn print_type_of<T>(_: &T) {
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
-    /// The pattern to look for
-    from_port: usize,
-    /// The path to the file to read
-    to_port: usize,
+    #[arg(short, long, num_args = 1..)]
+    from: Option<Vec<usize>>,
+    #[arg(short, long)]
+    to: Option<usize>,
 }
 
 #[tokio::main]
 async fn main() {//-> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    // let x = vec![5107, 5130, 5110];
-    // let mut rng = rand::thread_rng();
-    // let choice = x.choose(&mut rng).unwrap();
-    // warn!("forwarded to socks5 proxy at port {}!", choice);
-
     let args = Cli::parse();
+    let mut upstreams = Arc::new(Mutex::new(args.from.unwrap()));
 
-    warn!("convert proxy from socks5 :{:?} to http :{:?}", args.from_port, args.to_port);
+    let bind_port = args.to.expect("invalid `to` port");
+    // warn!("convert proxy from socks5 :{:?} to http :{:?}", &upstreams_clone.clone(), bind_port);
 
-    let mut listener = TcpListener::bind(format!("127.0.0.1:{:?}", args.to_port)).await.unwrap();
+    let mut listener = TcpListener::bind(format!("127.0.0.1:{:?}", bind_port)).await.unwrap();
 
     while let Ok((mut inbound, addr)) = listener.accept().await {
+        let upstreams_clone = upstreams.clone();
+
         info!("NEW CLIENT: {}", addr);
         tokio::spawn(async move {
             let mut buf = [0; 1024 * 8];
@@ -102,7 +103,7 @@ async fn main() {//-> Result<(), Box<dyn std::error::Error>> {
                             (host, port)
                         } else {
                             let req_url_parser =
-                                reqwest::Url::parse(valid_req_path);
+                                    reqwest::Url::parse(valid_req_path);
                             if let Err(e) = req_url_parser {
                                 warn!("ignore invalid req, {}", e);
                                 return;
@@ -122,13 +123,16 @@ async fn main() {//-> Result<(), Box<dyn std::error::Error>> {
 
                         // let mut upstream = socks::Socks5Stream::connect(
                         //     UPSTREAM_SOCKS5_PROXY_URL, &*pass_outbound).unwrap();
-
+                        let mut rng = rand::thread_rng();
+                        let upstream_clone = upstreams_clone.lock().unwrap();
+                        let upstream_port = upstream_clone.choose(&mut rng).unwrap();
+                        warn!("forwarded to socks5 proxy at port {}!", upstream_port);
                         let outbound =
-                            TcpStream::connect(format!( "127.0.0.1:{:?}", args.from_port)).await.unwrap();
+                                TcpStream::connect(format!("127.0.0.1:{:?}", upstream_port)).await.unwrap();
                         let mut outbound =
-                            io::BufStream::new(outbound);
+                                io::BufStream::new(outbound);
                         async_socks5::connect(&mut outbound, (req_host, req_port), None)
-                            .await.unwrap();
+                                .await.unwrap();
 
                         if req.method.unwrap() == Method::CONNECT {
                             inbound.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").await.unwrap();
@@ -137,24 +141,24 @@ async fn main() {//-> Result<(), Box<dyn std::error::Error>> {
 
                             let client_to_server = async {
                                 io::copy(&mut ri, &mut wo)
-                                    .await.expect("Transport endpoint is not connected");
+                                        .await.expect("Transport endpoint is not connected");
                                 wo.shutdown().await
                             };
 
                             let server_to_client = async {
                                 io::copy(&mut ro, &mut wi)
-                                    .await.expect("Transport endpoint is not connected");
+                                        .await.expect("Transport endpoint is not connected");
                                 wi.shutdown().await
                             };
 
                             futures::future::try_join(client_to_server, server_to_client)
-                                .await.unwrap();
+                                    .await.unwrap();
                         } else {
-                            let socks5_url = reqwest::Url::parse(&*format!("socks5://127.0.0.1:{:?}", args.from_port).to_string()).unwrap();
+                            let socks5_url = reqwest::Url::parse(&*format!("socks5://127.0.0.1:{:?}", upstream_port).to_string()).unwrap();
                             let client = reqwest::Client::builder()
-                                .proxy(reqwest::Proxy::all(socks5_url).unwrap())
-                                .build()
-                                .unwrap();
+                                    .proxy(reqwest::Proxy::all(socks5_url).unwrap())
+                                    .build()
+                                    .unwrap();
                             info!("connect via SOCKS5 to {}", valid_req_path);
                             info!("{}", invalid_buf.unwrap());
                             let response = client.get(valid_req_path).send().await.unwrap();
