@@ -1,3 +1,5 @@
+use std::sync::Arc;
+use async_socks5::Auth;
 use clap::Parser;
 use log::{info, warn};
 use rand::prelude::SliceRandom;
@@ -17,6 +19,10 @@ struct Cli {
     from: Option<Vec<usize>>,
     #[arg(short, long)]
     to: Option<usize>,
+    #[arg(long)]
+    auth_password: Option<String>,
+    #[arg(long)]
+    auth_username: Option<String>,
 }
 
 #[tokio::main]
@@ -25,13 +31,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args = Cli::parse();
     let upstreams: &'static [usize] = args.from.unwrap().leak();
+    let auth_username = Arc::new(args.auth_username.unwrap_or("".to_string()));
+    let auth_password= Arc::new(args.auth_password.unwrap_or("".to_string()));
 
     let bind_port = args.to.expect("invalid `to` port");
-    // warn!("convert proxy from socks5 :{:?} to http :{:?}", &upstreams_clone.clone(), bind_port);
+    warn!("convert proxy from socks5 :{:?} to http :{:?}", &upstreams.clone(), bind_port);
 
     let  listener = TcpListener::bind(format!("127.0.0.1:{:?}", bind_port)).await?;
     loop {
         let (mut inbound, addr) = listener.accept().await?;
+        let auth_username_clone = Arc::clone(&auth_username);
+        let auth_password_clone = Arc::clone(&auth_password);
         info!("NEW CLIENT: {}", addr);
         tokio::spawn(async move {
             let upstream_port = upstreams.choose(&mut rand::thread_rng()).unwrap();
@@ -75,16 +85,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         };
                         (req_host, req_port)
                     };
-                    let pass_outbound = format!("{}:{}", req_host, req_port);
-                    info!("PASS {} TO UPSTREAM", pass_outbound);
-
-                    // let mut upstream = socks::Socks5Stream::connect(
-                    //     UPSTREAM_SOCKS5_PROXY_URL, &*pass_outbound).unwrap();
-
-                    warn!("forwarded to socks5 proxy at port {}!", upstream_port);
+                    warn!("forward to socks5 proxy at port {}!", upstream_port);
                     let outbound = TcpStream::connect(format!("127.0.0.1:{:?}", upstream_port)).await.unwrap();
                     let mut outbound = io::BufStream::new(outbound);
-                    async_socks5::connect(&mut outbound, (req_host, req_port), None).await.unwrap();
+                    let _auth_username = format!("{:?}", auth_username_clone);
+                    let _auth_password = format!("{:?}", auth_password_clone);
+                    let auth = if _auth_username == "\"\"" || _auth_password == "\"\""{
+                        None
+                    } else {
+                        Some(Auth::new(_auth_username, _auth_password))
+                    };
+                    async_socks5::connect(&mut outbound, (req_host, req_port), auth).await.unwrap();
 
                     if req.method.unwrap() == Method::CONNECT {
                         inbound.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").await.unwrap();
@@ -117,7 +128,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let _ = inbound.write(&response_bytes).await;
                         inbound.flush().await.unwrap();
                         // Ok(hyper::Response::new(hyper::Body::from(body_text)))
-
 
                         // // Method = GET ...
                         // let upstream_write_bytes_size =

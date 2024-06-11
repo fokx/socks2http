@@ -1,6 +1,6 @@
 [package]
 name = "socks2http"
-version = "0.3.1"
+version = "0.3.2"
 description = "Convert SOCKS5 proxy to HTTP proxy"
 authors = ["fokx <github.com/fokx>"]
 edition = "2021"
