@@ -1,11 +1,11 @@
-use std::sync::Arc;
 use async_socks5::Auth;
 use clap::Parser;
 use log::{info, warn};
-use rand::prelude::SliceRandom;
+use rand::prelude::IndexedRandom;
 use reqwest::Method;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use std::sync::Arc;
 use tokio::io;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
 // fn print_type_of<T>(_: &T) {
@@ -32,26 +32,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Cli::parse();
     let upstreams: &'static [usize] = args.from.unwrap().leak();
     let auth_username = Arc::new(args.auth_username.unwrap_or("".to_string()));
-    let auth_password= Arc::new(args.auth_password.unwrap_or("".to_string()));
+    let auth_password = Arc::new(args.auth_password.unwrap_or("".to_string()));
 
     let bind_port = args.to.expect("invalid `to` port");
-    warn!("convert proxy from socks5 :{:?} to http :{:?}", &upstreams.clone(), bind_port);
+    warn!(
+        "convert proxy from socks5 :{:?} to http :{:?}",
+        &upstreams, bind_port
+    );
 
-    let  listener = TcpListener::bind(format!("127.0.0.1:{:?}", bind_port)).await?;
+    let listener = TcpListener::bind(format!("127.0.0.1:{:?}", bind_port)).await?;
     loop {
         let (mut inbound, addr) = listener.accept().await?;
         let auth_username_clone = Arc::clone(&auth_username);
         let auth_password_clone = Arc::clone(&auth_password);
         info!("NEW CLIENT: {}", addr);
         tokio::spawn(async move {
-            let upstream_port = upstreams.choose(&mut rand::thread_rng()).unwrap();
+            let upstream_port = upstreams.choose(&mut rand::rng()).unwrap();
             let mut buf = [0; 1024 * 8];
-            let Ok(downstream_read_bytes_size) = inbound.read(&mut buf).await else { return; };
+            let Ok(downstream_read_bytes_size) = inbound.read(&mut buf).await else {
+                return;
+            };
             let bytes_from_downstream = &buf[0..downstream_read_bytes_size];
 
             let mut headers = [httparse::EMPTY_HEADER; 16];
             let mut req = httparse::Request::new(&mut headers);
-            let Ok(parse_result) = req.parse(bytes_from_downstream) else { return; };
+            let Ok(parse_result) = req.parse(bytes_from_downstream) else {
+                return;
+            };
             // let Ok(invalid_buf) = String::from_utf8(buf[0..downstream_read_bytes_size].to_vec()) else {return};
 
             if parse_result.is_complete() {
@@ -69,8 +76,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let host: String = slice[0..slice.len() - 1].join(":"); // String
                         (host, port)
                     } else {
-                        let req_url_parser =
-                                reqwest::Url::parse(valid_req_path);
+                        let req_url_parser = reqwest::Url::parse(valid_req_path);
                         if let Err(e) = req_url_parser {
                             warn!("ignore invalid req, {}", e);
                             return;
@@ -86,25 +92,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         (req_host, req_port)
                     };
                     warn!("forward to socks5 proxy at port {}!", upstream_port);
-                    let outbound = TcpStream::connect(format!("127.0.0.1:{:?}", upstream_port)).await.unwrap();
+                    let outbound = TcpStream::connect(format!("127.0.0.1:{:?}", upstream_port))
+                        .await
+                        .unwrap();
                     let mut outbound = io::BufStream::new(outbound);
                     let _auth_username = format!("{:?}", auth_username_clone);
                     let _auth_password = format!("{:?}", auth_password_clone);
-                    let auth = if _auth_username == "\"\"" || _auth_password == "\"\""{
+                    let auth = if _auth_username == "\"\"" || _auth_password == "\"\"" {
                         None
                     } else {
                         Some(Auth::new(_auth_username, _auth_password))
                     };
-                    async_socks5::connect(&mut outbound, (req_host, req_port), auth).await.unwrap();
+                    async_socks5::connect(&mut outbound, (req_host, req_port), auth)
+                        .await
+                        .unwrap();
 
                     if req.method.unwrap() == Method::CONNECT {
-                        inbound.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").await.unwrap();
+                        inbound
+                            .write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+                            .await
+                            .unwrap();
                         let (mut ri, mut wi) = inbound.split();
                         let (mut ro, mut wo) = outbound.get_mut().split();
 
                         let client_to_server = async {
                             io::copy(&mut ri, &mut wo)
-                                    .await.expect("Transport endpoint is not connected");
+                                .await
+                                .expect("Transport endpoint is not connected");
                             wo.shutdown().await
                         };
 
@@ -115,11 +129,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         let _ = futures::future::try_join(client_to_server, server_to_client).await;
                     } else {
-                        let socks5_url = reqwest::Url::parse(&*format!("socks5://127.0.0.1:{:?}", upstream_port).to_string()).unwrap();
+                        let socks5_url = reqwest::Url::parse(
+                            &*format!("socks5://127.0.0.1:{:?}", upstream_port).to_string(),
+                        )
+                        .unwrap();
                         let client = reqwest::Client::builder()
-                                .proxy(reqwest::Proxy::all(socks5_url).unwrap())
-                                .build()
-                                .unwrap();
+                            .proxy(reqwest::Proxy::all(socks5_url).unwrap())
+                            .build()
+                            .unwrap();
                         info!("connect via SOCKS5 to {}", valid_req_path);
                         let response = client.get(valid_req_path).send().await.unwrap();
                         // let headers = response.headers();
@@ -147,8 +164,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
             }
         });
-    };
+    }
 }
-
-
-

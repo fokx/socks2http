@@ -1,6 +1,6 @@
 [package]
 name = "socks2http"
-version = "0.4.0"
+version = "0.4.1"
 description = "Convert SOCKS5 proxy to HTTP proxy"
 authors = ["fokx <github.com/fokx>"]
 edition = "2021"
@@ -10,15 +10,15 @@ repository = "https://github.com/fokx/socks2http"
 [dependencies]
 #openssl = { version = "0.10.49" }
 #openssl2-sys = "1.0.0"
-hyper = "*"
-tokio = { version = "*", features = ["full"] }
-reqwest = { version = "*", features = ["rustls-tls", "blocking", "socks"] }
-log = "*"
-env_logger ="*"
-httparse = "*"
-async-socks5 = "*"
+#hyper = "*"
+tokio = { version = "1.43.0", features = ["full"] }
+reqwest = { version = "0.12.12", features = ["rustls-tls", "blocking", "socks"] }
+log = "0.4.25"
+env_logger ="0.11.6"
+httparse = "1.10.0"
+async-socks5 = "0.6.0"
 #tokio-socks = "0.2.0"
 #socks = "0.3.2"
-futures = "*"
-rand = "*"
-clap = { version = "4.5.4", features = ["derive"] }
+futures = "0.3.31"
+rand = { version = "0.9.0", features = ["thread_rng"] }
+clap = { version = "4.5.30", features = ["derive"] }
