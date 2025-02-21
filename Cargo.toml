@@ -13,7 +13,7 @@ repository = "https://github.com/fokx/socks2http"
 #hyper = "*"
 tokio = { version = "1.43.0", features = ["full"] }
 reqwest = { version = "0.12.12", features = ["rustls-tls", "blocking", "socks"] }
-log = "0.4.25"
+log = "0.4.26"
 env_logger ="0.11.6"
 httparse = "1.10.0"
 async-socks5 = "0.6.0"
