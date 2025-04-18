@@ -23,5 +23,5 @@ async-socks5 = "0.6.0"
 #tokio-socks = "0.2.0"
 #socks = "0.3.2"
 futures = "0.3.31"
-rand = { version = "0.9.0", features = ["thread_rng"] }
+rand = { version = "0.9.1", features = ["thread_rng"] }
 clap = { version = "4.5.36", features = ["derive"] }
