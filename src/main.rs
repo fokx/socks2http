@@ -84,11 +84,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let req_url_parser = req_url_parser.unwrap();
 
                         let req_host = req_url_parser.host().unwrap().to_string();
-                        let req_port = if let Some(port) = req_url_parser.port() {
-                            port
-                        } else {
-                            80
-                        };
+                        let req_port = req_url_parser.port().unwrap_or(80);
                         (req_host, req_port)
                     };
                     warn!("forward to socks5 proxy at port {}!", upstream_port);
@@ -130,7 +126,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let _ = futures::future::try_join(client_to_server, server_to_client).await;
                     } else {
                         let socks5_url = reqwest::Url::parse(
-                            &*format!("socks5://127.0.0.1:{:?}", upstream_port).to_string(),
+                            &format!("socks5://127.0.0.1:{:?}", upstream_port).to_string(),
                         )
                         .unwrap();
                         let client = reqwest::Client::builder()
